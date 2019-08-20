@@ -72,14 +72,62 @@ RabbitMQ 使用一些机制来保证可靠性，如持久化、传输确认、�
 
 ## 5 工作模式
 
-### 5.1 simple模式
+### 5.1 simple queue
 
 ![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqsimple.png)
 
 1. 消息产生消息，将消息放入队列
 2. 消息的消费者(consumer) 监听 消息队列,如果队列中有消息,就消费掉,消息被拿走后,自动从队列中删除
 
-### 5.2 工作模式
+### 5.2 work queue
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqwork.png)
 
 
+
+1. 消息产生者将消息放入队列消费者可以有多个,消费者1,消费者2同时监听同一个队列,消息被消费。C1 C2共同争抢当前的消息队列内容,谁先拿到谁负责消费消息(隐患：高并发情况下,默认会产生某一个消息被多个消费者共同使用,可以设置一个开关(syncronize) 保证一条消息只能被一个消费者使用)。
+
+
+
+### 5.3 publish/subscribe
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqsub.png)
+
+
+
+1. 每个消费者监听自己的队列；
+2. 生产者将消息发给broker，由交换机将消息转发到绑定此交换机的每个队列，每个绑定交换机的队列都将接收到消息。
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqfanout.png)
+
+
+
+### 5.4 routing
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqroute.png)
+
+
+
+1. 消息生产者将消息发送给交换机按照路由判断,路由是字符串(info) 当前产生的消息携带路由字符(对象的方法),交换机根据路由的key,只能匹配上路由key对应的消息队列,对应的消费者才能消费消息;
+2. 根据业务功能定义路由字符串
+3. 从系统的代码逻辑中获取对应的功能字符串,将消息任务扔到对应的队列中。
+4. 业务场景:error 通知;EXCEPTION;错误通知的功能;传统意义的错误通知;客户通知;利用key路由,可以将程序中的错误封装成消息传入到消息队列中,开发者可以自定义消费者,实时接收错误;
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqdirect.png)
+
+
+
+### 5.5 topic
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqtopic.png)
+
+
+
+1. 星号井号代表通配符
+2. 星号代表多个单词,井号代表一个单词
+3. 路由功能添加模糊匹配
+4. 消息产生者产生消息,把消息交给交换机
+5. 交换机根据key的规则模糊匹配到对应的队列,由队列的监听消费者接收消息消费
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqtopicex.png)
 
