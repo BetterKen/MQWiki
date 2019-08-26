@@ -50,3 +50,71 @@ index 和 log 文件以当前 segment 的**第一条消息的 offset** 命名。
 
 
 
+## 4 Kafka生产者
+
+### 4.1 分区策略
+
+#### 4.1.1 分区原因
+
+- **方便在集群中扩展**，每个Partition可以通过调整以适应它所在的机器，而一个topic 又可以有多个Partition组成，因此整个集群就可以适应任意大小的数据了；
+- **可以提高并发**，因为可以以Partition为单位读写了
+
+#### 4.1.2 分区原则
+
+在生产端发送数据的时候,发送到的分区根据以下顺序选择:
+
+1. 指明partition 的情况下，直接将指明的值直接作为partiton 值；
+2. 没有指明partition 值但有key 的情况下，将key 的hash 值与topic 的partition 数进行取余得到partition 值；
+3. 既没有partition 值又没有key 值的情况下，第一次调用时随机生成一个整数（后面每次调用在这个整数上自增），将这个值与topic 可用的partition 总数取余得到partition 值，也就是常说的round-robin 算法。
+
+### 4.2 数据可靠性
+
+**为保证producer发送的数据，能可靠的发送到指定的topic，topic的每个partition收到producer发送的数据后，都需要向producer发送ack（acknowledgement确认收到），如果producer收到ack，就会进行下一轮的发送，否则重新发送数据。**
+
+#### 4.2.1 发送方案
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/kafkaack.png)
+
+Kafka 选择了**第二种**方案，原因如下：
+
+- 同样为了容忍 n 台节点的故障，第一种方案需要 2n+1 个副本，而第二种方案只需要 n+1个副本，而 Kafka 的每个分区都有大量的数据，**第一种方案会造成大量数据的冗余**。
+
+- 虽然第二种方案的网络延迟会比较高，但网络延迟对 Kafka 的影响较小。
+
+#### 4.2.2 ISR
+
+采用第二种方案之后，设想以下情景：leader 收到数据，所有 follower 都开始同步数据，
+但有一个 follower，因为某种故障，迟迟不能与 leader 进行同步，那 leader 就要一直等下去，
+直到它完成同步，才能发送 ack。这个问题怎么解决呢？
+
+**Leader维护了一个动态的in-syncreplicaset(ISR)，意为和leader保持同步的follower集合。当ISR中的follower完成数据的同步之后，leader就会给follower发送ack。如果follower长时间未向leader同步数据，则该follower将被踢出ISR，该时间阈值由replica.lag.time.max.ms参数设定。Leader发生故障之后，就会从ISR中选举新的leader。**
+
+#### 4.2.3 ACK应答机制
+
+对于某些不太重要的数据，对数据的可靠性要求不是很高，能够容忍数据的少量丢失，所以没必要等ISR中的follower全部接收成功。所以**Kafka为用户提供了三种可靠性级别**，用户根据对可靠性和延迟的要求进行权衡，选择以下的配置。
+
+
+- **0**：**producer不等待broker的ack**，这一操作提供了一个最低的延迟，broker一接收到还没有写入磁盘就已经返回，当broker故障时有可能丢失数据；
+- **1**：**producer等待broker的ack，partition的leader落盘成功后返回ack**，如果在follower同步成功之前leader故障，那么将会丢失数据；
+- **-1**（all）：**producer等待broker的ack，partition的leader和follower全部落盘成功后才返回ack**。但是如果在follower同步完成后，broker发送ack之前，leader发生故障，那么会造成**数据重复**
+
+#### 4.2.4 HW和LEO
+
+**LEO：指的是每个副本最大的 offset；**
+**HW：指的是消费者能见到的最大的 offset，ISR 队列中最小的 LEO。**
+
+![](http://dist415.oss-cn-beijing.aliyuncs.com/kafkahw.png)
+
+- **follower故障**：follower发生故障后会被临时踢出ISR，待该follower恢复后，follower会读取本地磁盘记录的上次的HW，并将log文件高于HW的部分截取掉，从HW开始向leader进行同步。等该**follower的LEO大于等于该Partition的HW**，即follower追上leader之后，就可以重新加入ISR了。
+
+- **leader故障**:leader发生故障之后，会从ISR中选出一个新的leader，之后，为保证多个副本之间的数据一致性，其余的follower会先将各自的log文件高于**HW的部分截掉**，然后从新的leader 同步数据。
+
+  
+
+**注意：这只能保证副本之间的数据一致性，并不能保证数据不丢失或者不重复。**
+
+
+
+
+
+
