@@ -115,6 +115,47 @@ Kafka 选择了**第二种**方案，原因如下：
 
 
 
+### 4.3 ExactlyOnce语义
+
+将服务器的ACK级别设置为-1,可以保证Producer到Server之间不会丢失数据，即**At Least Once语义**。相对的，将服务器ACK级别设置为0,可以保证生产者每条消息只会被发送一次，即**AtMostOnce语义**。
+
+**AtLeastOnce可以保证数据不丢失，但是不能保证数据不重复**
+
+**AtLeastOnce 可以保证数据不重复，但是不能保证数据不丢失**
+
+但是，对于一些非常重要的信息，比如说交易数据，下游数据消费者要求数据既不重复也不丢失，即ExactlyOnce语义。在0.11版本以前的Kafka，对此是无能为力的，只**能保证数据不丢失，再在下游消费者对数据做全局去重**。对于多个下游应用的情况，每个都需要单独做全局去重，这就对性能造成了很大影响。
+
+0.11版本的Kafka，引入了一项重大特性：**幂等性**。**所谓的幂等性就是指Producer不论向Server发送多少次重复数据，Server端都只会持久化一条**。幂等性结合AtLeastOnce语义，就构成了Kafka的ExactlyOnce语义。即：
+
+```
+AtLeastOnce+幂等性=ExactlyOnce
+```
+
+要启用幂等性，只需要将**Producer的参数中enable.idompotence设置为true即可**。
+
+**Kafka 的幂等性实现其实就是将原来下游需要做的去重放在了数据上游**。开启幂等性的Producer在初始化的时候会被分配一个PID，发往同一Partition的消息会附带SequenceNumber。**而Broker端会对<PID,Partition,SeqNumber>做缓存，当具有相同主键的消息提交时，Broker只会持久化一条**。
+
+**但是PID重启就会变化，同时不同的Partition也具有不同主键，所以幂等性无法保证跨分区跨会话的ExactlyOnce。**
+
+
+
+## 5 Kafka消费者
+
+### 5.1 消费方式
+
+**consumer采用pull（拉）模式从broker中读取数据**。
+
+push（推）模式很难适应消费速率不同的消费者，因为消息发送速率是由broker决定的。它的目标是尽可能以最快速度传递消息，但是这样很容易造成consumer来不及处理消息，典型的表现就是拒绝服务以及网络拥塞。而pull模式则可以根据consumer的消费能力以适当的速率消费消息。
+
+**pull模式不足之处是，如果kafka没有数据，消费者可能会陷入循环中，一直返回空数据**。针对这一点，Kafka的消费者在消费数据时会传入一个时长参数**timeout**，如果当前没有数据可供消费，consumer会等待一段时间之后再返回，这段时长即为timeout。
+
+### 5.2 offset维护
+
+由于consumer在消费过程中可能会出现断电宕机等故障，consumer恢复后，需要从故障前的位置的继续消费，所以**consumer需要实时记录自己消费到了哪个offset，以便故障恢复后继续消费**。
+
+**Kafka0.9版本之前，consumer默认将offset保存在Zookeeper中，从0.9版本开始，consumer默认将offset保存在Kafka一个内置的topic中，该topic为__consumer_offsets**
+
+
 
 
 
