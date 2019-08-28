@@ -1,6 +1,6 @@
 ## Kafka介绍
 
-## 1. 基础架构
+## 1 基础架构
 
 ![](http://dist415.oss-cn-beijing.aliyuncs.com/kafkaarc.png)
 
