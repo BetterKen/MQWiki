@@ -131,3 +131,5 @@ RabbitMQ 使用一些机制来保证可靠性，如持久化、传输确认、�
 
 ![](http://dist415.oss-cn-beijing.aliyuncs.com/rmqtopicex.png)
 
+
+
